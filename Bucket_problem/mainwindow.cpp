@@ -3,6 +3,7 @@
 #include <QPainter>
 #include <QMessageBox>
 #include <QGroupBox>
+#include <QComboBox>
 #include <sstream>
 using namespace std;
 
@@ -16,6 +17,12 @@ void BucketWidget::setValue(int value) {
     update();
 }
 
+void BucketWidget::setCapacity(int capacity) {
+    maxCapacity = capacity;
+    currentValue = qBound(0, currentValue, maxCapacity);
+    update();
+}
+
 void BucketWidget::paintEvent(QPaintEvent* event) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
@@ -23,29 +30,25 @@ void BucketWidget::paintEvent(QPaintEvent* event) {
     int w = width();
     int h = height();
 
-
     int bucketWidth = 100;
     int bucketHeight = 200;
     int x = (w - bucketWidth) / 2;
     int y = h - bucketHeight - 40;
 
-    // դույլի սև գծանշումն ենք անում
     painter.setPen(QPen(Qt::black, 3));
     painter.setBrush(Qt::white);
     painter.drawRect(x, y, bucketWidth, bucketHeight);
 
-    // հասկանում ենք, ըստ տրված արժեքի դույլի որ հատվածն է լցվելու
     if (currentValue > 0) {
         int waterHeight = (bucketHeight * currentValue) / maxCapacity;
         QLinearGradient gradient(x, y + bucketHeight - waterHeight, x, y + bucketHeight);
         gradient.setColorAt(0, QColor(100, 180, 255));
         gradient.setColorAt(1, QColor(50, 120, 200));
         painter.setBrush(gradient);
-        painter.setPen(Qt::NoPen); // Քանի որ ջրով լցված հատվածը գծանշում չի ունենալու, հանում ենք pen-ի ռեժիմը
+        painter.setPen(Qt::NoPen);
         painter.drawRect(x, y + bucketHeight - waterHeight, bucketWidth, waterHeight);
     }
 
-    // Labels
     painter.setPen(Qt::black);
     QFont font = painter.font();
     font.setPointSize(12);
@@ -56,14 +59,18 @@ void BucketWidget::paintEvent(QPaintEvent* event) {
     painter.drawText(QRect(0, h - 30, w, 30), Qt::AlignCenter, label);
 }
 
-//  MainWindow Implementation
-ProblemDefinition createBucketProblem();
+ProblemDefinition createBucketProblem_2_7_3();
+ProblemDefinition createBucketProblem_3_5_4();
+ProblemDefinition createBucketProblem_4_9_6();
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), problem(nullptr), interpreter(nullptr),
     currentStep(0), isRunning(false) {
 
-    ProblemRegistry::instance().registerProblem(createBucketProblem());
+    ProblemRegistry::instance().registerProblem(createBucketProblem_2_7_3());
+    ProblemRegistry::instance().registerProblem(createBucketProblem_3_5_4());
+    ProblemRegistry::instance().registerProblem(createBucketProblem_4_9_6());
+
     problem = ProblemRegistry::instance().getProblem("buckets_2_7_3");
 
     if (!problem) {
@@ -77,6 +84,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     setupUI();
     updateBucketDisplay();
+    updateDescription();
     connect(stepTimer, &QTimer::timeout, this, &MainWindow::executeNextStep);
 }
 
@@ -95,30 +103,33 @@ void MainWindow::setupUI() {
 
     QVBoxLayout* leftPanel = new QVBoxLayout();
 
-    QGroupBox* descGroup = new QGroupBox(" Խնդրի նկարագրություն");
+    QGroupBox* selectorGroup = new QGroupBox("Ընտրել խնդիրը");
+    QVBoxLayout* selectorLayout = new QVBoxLayout(selectorGroup);
+
+    problemSelector = new QComboBox();
+    problemSelector->addItem("2L և 7L → 3L", "buckets_2_7_3");
+    problemSelector->addItem("3L և 5L → 4L", "buckets_3_5_4");
+    problemSelector->addItem("4L և 9L → 6L", "buckets_4_9_6");
+    selectorLayout->addWidget(problemSelector);
+
+    leftPanel->addWidget(selectorGroup);
+
+    connect(problemSelector, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onProblemChanged);
+
+    QGroupBox* descGroup = new QGroupBox("Խնդրի նկարագրություն");
     QVBoxLayout* descLayout = new QVBoxLayout(descGroup);
 
-    descriptionLabel = new QLabel(
-        "<h3>Դույլերի խնդիր (2L + 7L → 3L)</h3>"
-        "<p>Տրված են երկու դույլ՝ <b>2 լիտր</b> և <b>7 լիտր</b> տարողությամբ։<br>"
-        "Նպատակ՝ ստանալ ճշգրիտ <b style='color: green;'>3 լիտր</b> ջուր։</p>"
-        "<p><b>Թույլատրելի հրամաններ:</b><br>"
-        "• FILL X - Լցնել X դույլը<br>"
-        "• FILL Y - Լցնել Y դույլը<br>"
-        "• EMPTY X - Դատարկել X դույլը<br>"
-        "• EMPTY Y - Դատարկել Y դույլը<br>"
-        "• POUR X Y - Լցնել X-ից Y<br>"
-        "• POUR Y X - Լցնել Y-ից X</p>"
-        );
+    descriptionLabel = new QLabel();
     descriptionLabel->setWordWrap(true);
     descLayout->addWidget(descriptionLabel);
     leftPanel->addWidget(descGroup);
 
-    QGroupBox* codeGroup = new QGroupBox("📥Ձեր լուծումը (մեկ հրաման յուրաքանչյուր տողում)");
+    QGroupBox* codeGroup = new QGroupBox("Ձեր լուծումը (մեկ հրաման յուրաքանչյուր տողում)");
     QVBoxLayout* codeLayout = new QVBoxLayout(codeGroup);
 
     codeEditor = new QTextEdit();
-    codeEditor->setPlaceholderText("Օրինակ:\nFILL Y\nPOUR Y X\nEMPTY X\nPOUR Y X");
+    codeEditor->setPlaceholderText("Օրինակ:\nFILL Y\nPOUR Y X\nFILL Y\nPOUR Y X\nEMPTY X\nPOUR Y X");
     QFont monoFont("Courier");
     monoFont.setPointSize(11);
     codeEditor->setFont(monoFont);
@@ -126,12 +137,11 @@ void MainWindow::setupUI() {
 
     leftPanel->addWidget(codeGroup);
 
-    // Buttons
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     runButton = new QPushButton("▶️ Կատարել");
     runButton->setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-size: 14px; padding: 8px; }");
 
-    stepButton = new QPushButton("⏭ Քայլ առ Քայլ");
+    stepButton = new QPushButton("⏭▶ Քայլ առ Քայլ");
     stepButton->setStyleSheet("QPushButton { background-color: #2196F3; color: white; font-size: 14px; padding: 8px; }");
 
     resetButton = new QPushButton("⬅️ Վերսկսել");
@@ -142,8 +152,7 @@ void MainWindow::setupUI() {
     buttonLayout->addWidget(resetButton);
     leftPanel->addLayout(buttonLayout);
 
-    // Output console
-    QGroupBox* outputGroup = new QGroupBox("📤 Ելք");
+    QGroupBox* outputGroup = new QGroupBox("⬆️Ելք");
     QVBoxLayout* outputLayout = new QVBoxLayout(outputGroup);
 
     outputConsole = new QTextEdit();
@@ -156,13 +165,11 @@ void MainWindow::setupUI() {
 
     mainLayout->addLayout(leftPanel, 2);
 
-    //Right Panel:
     QVBoxLayout* rightPanel = new QVBoxLayout();
 
-    QGroupBox* visualGroup = new QGroupBox("🪣  Տեսողական ցուցադրում");
+    QGroupBox* visualGroup = new QGroupBox("Տեսողական ցուցադրում");
     QVBoxLayout* visualLayout = new QVBoxLayout(visualGroup);
 
-    // label
     statusLabel = new QLabel("Սկզբնական վիճակ");
     statusLabel->setAlignment(Qt::AlignCenter);
     QFont statusFont = statusLabel->font();
@@ -172,10 +179,9 @@ void MainWindow::setupUI() {
     statusLabel->setStyleSheet("QLabel { background-color: #E3F2FD; padding: 10px; border-radius: 5px; }");
     visualLayout->addWidget(statusLabel);
 
-    // Buckets
     QHBoxLayout* bucketsLayout = new QHBoxLayout();
-    bucketX = new BucketWidget("X դույլ (2L)", 2);
-    bucketY = new BucketWidget("Y դույլ (7L)", 7);
+    bucketX = new BucketWidget("X դույլ", 3);
+    bucketY = new BucketWidget("Y դույլ", 5);
 
     bucketsLayout->addWidget(bucketX);
     bucketsLayout->addStretch();
@@ -186,7 +192,6 @@ void MainWindow::setupUI() {
 
     mainLayout->addLayout(rightPanel, 1);
 
-    // Connect signals
     connect(runButton, &QPushButton::clicked, this, &MainWindow::onRunClicked);
     connect(resetButton, &QPushButton::clicked, this, &MainWindow::onResetClicked);
     connect(stepButton, &QPushButton::clicked, this, &MainWindow::onStepClicked);
@@ -196,6 +201,60 @@ void MainWindow::updateBucketDisplay() {
     auto state = interpreter->getState();
     bucketX->setValue(state["bucketX"]);
     bucketY->setValue(state["bucketY"]);
+
+    int xCap = problem->variables[0].maxValue;
+    int yCap = problem->variables[1].maxValue;
+    bucketX->setCapacity(xCap);
+    bucketY->setCapacity(yCap);
+}
+
+void MainWindow::updateDescription() {
+    if (!problem) return;
+
+    int xCap = problem->variables[0].maxValue;
+    int yCap = problem->variables[1].maxValue;
+    int target = 0;
+
+    if (problem->id == "buckets_2_7_3") target = 3;
+    else if (problem->id == "buckets_3_5_4") target = 4;
+    else if (problem->id == "buckets_4_9_6") target = 6;
+
+    QString desc = QString(
+                       "<h3>%1</h3>"
+                       "<p>Տրված են երկու դույլ <b>%2 լիտր</b> և <b>%3 լիտր</b> տարողությամբ։<br>"
+                       "Նպատակ՝ ստանալ ճշգրիտ <b style='color: green;'>%4 լիտր</b> ջուր։</p>"
+                       "<p><b>Հրամաններ:</b><br>"
+                       "• FILL X - Լցնել X դույլը<br>"
+                       "• FILL Y - Լցնել Y դույլը<br>"
+                       "• EMPTY X - Դատարկել X դույլը<br>"
+                       "• EMPTY Y - Դատարկել Y դույլը<br>"
+                       "• POUR X Y - Լցնել X-ից Y<br>"
+                       "• POUR Y X - Լցնել Y-ից X</p>"
+                       ).arg(QString::fromStdString(problem->title))
+                       .arg(xCap)
+                       .arg(yCap)
+                       .arg(target);
+
+    descriptionLabel->setText(desc);
+}
+
+void MainWindow::onProblemChanged(int index) {
+    if (isRunning) {
+        QMessageBox::warning(this, "Սխալ", "Չեք կարող փոխել խնդիրը կատարման ժամանակ!");
+        problemSelector->setCurrentIndex(problemSelector->findData(QString::fromStdString(problem->id)));
+        return;
+    }
+
+    QString problemId = problemSelector->currentData().toString();
+    problem = ProblemRegistry::instance().getProblem(problemId.toStdString());
+
+    if (!problem) {
+        QMessageBox::critical(this, "Error", "Failed to load problem!");
+        return;
+    }
+
+    onResetClicked();
+    updateDescription();
 }
 
 void MainWindow::showMessage(const QString& msg, const QString& color) {
@@ -203,7 +262,7 @@ void MainWindow::showMessage(const QString& msg, const QString& color) {
 }
 
 void MainWindow::onRunClicked() {
-    if (isRunning) return; //եթե արդեն run  ա լինում, սաղ մաքրում ենք սկզբնական վիճակի, որ ապահովռնք որ նոր run ը մաքուր լինի
+    if (isRunning) return;
 
     onResetClicked();
 
@@ -225,18 +284,19 @@ void MainWindow::onRunClicked() {
     }
 
     if (commands.empty()) {
-        QMessageBox::warning(this, "Սխալ", "Խնդրում ենք մուտքագրել հրամաններ!");
+        QMessageBox::warning(this, "Սխալ", "Խնդրում եմք մուտքագրել հրամաններ!");
         return;
     }
 
     outputConsole->clear();
-    showMessage("=== Սկսում ենք կատարումը ===", "blue");
+    showMessage("=== Սկսում եմք կատարումը ===", "blue");
 
     currentStep = 0;
     isRunning = true;
     runButton->setEnabled(false);
     stepButton->setEnabled(false);
     codeEditor->setEnabled(false);
+    problemSelector->setEnabled(false);
 
     stepTimer->start();
 }
@@ -248,6 +308,7 @@ void MainWindow::executeNextStep() {
         runButton->setEnabled(true);
         stepButton->setEnabled(true);
         codeEditor->setEnabled(true);
+        problemSelector->setEnabled(true);
 
         if (!interpreter->isSolved()) {
             showMessage("\n❌ Խնդիրը չի լուծվել", "red");
@@ -272,12 +333,13 @@ void MainWindow::executeNextStep() {
             runButton->setEnabled(true);
             stepButton->setEnabled(true);
             codeEditor->setEnabled(true);
+            problemSelector->setEnabled(true);
 
-            showMessage("\n✅ Շնորհավորում ենք! Խնդիրը լուծվեց!", "green");
+            showMessage("\n✅ Շնորհավորում եմ! Խնդիրը լուծված է!", "green");
             statusLabel->setText("✅ Լուծված!");
             statusLabel->setStyleSheet("QLabel { background-color: #C8E6C9; padding: 10px; border-radius: 5px; color: green; }");
 
-            QMessageBox::information(this, "Հաջողություն", "🎉 Շնորհավորում ենք!\nԽնդիրը լուծված է!");
+            QMessageBox::information(this, "Հաջողություն", "Շնորհավորում եմ!\nԽնդիրը լուծված է!");
         }
     } else {
         stepTimer->stop();
@@ -285,6 +347,7 @@ void MainWindow::executeNextStep() {
         runButton->setEnabled(true);
         stepButton->setEnabled(true);
         codeEditor->setEnabled(true);
+        problemSelector->setEnabled(true);
 
         showMessage("❌ Սխալ հրաման", "red");
         statusLabel->setText("❌ Սխալ");
@@ -318,7 +381,7 @@ void MainWindow::onStepClicked() {
         }
 
         if (commands.empty()) {
-            QMessageBox::warning(this, "Սխալ", "Խնդրում ենք մուտքագրել հրամաններ!");
+            QMessageBox::warning(this, "Սխալ", "Խնդրում եմք մուտքագրել հրամաններ!");
             return;
         }
 
@@ -349,4 +412,5 @@ void MainWindow::onResetClicked() {
     runButton->setEnabled(true);
     stepButton->setEnabled(true);
     codeEditor->setEnabled(true);
+    problemSelector->setEnabled(true);
 }
