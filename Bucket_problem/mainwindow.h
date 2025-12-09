@@ -8,14 +8,18 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QTimer>
+#include <QComboBox>
 #include "interpreter.h"
 #include "problem_definition.h"
+
+class ProblemDefinition;
 
 class BucketWidget : public QWidget {
     Q_OBJECT
 public:
     explicit BucketWidget(const QString& name, int capacity, QWidget* parent = nullptr);
     void setValue(int value);
+    void setCapacity(int capacity);
     int getValue() const { return currentValue; }
 
 protected:
@@ -39,13 +43,15 @@ private slots:
     void onResetClicked();
     void onStepClicked();
     void executeNextStep();
+    void onProblemChanged(int index);
 
 private:
     void setupUI();
     void updateBucketDisplay();
+    void updateDescription();
     void showMessage(const QString& msg, const QString& color);
 
-    // UI Components
+    QComboBox* problemSelector;
     QTextEdit* codeEditor;
     QTextEdit* outputConsole;
     BucketWidget* bucketX;
@@ -56,7 +62,6 @@ private:
     QLabel* statusLabel;
     QLabel* descriptionLabel;
 
-    // Problem solving
     ProblemDefinition* problem;
     Interpreter* interpreter;
     std::vector<std::string> commands;
